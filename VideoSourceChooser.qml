@@ -28,7 +28,7 @@ Dialog {
         } else if (container.networkRadioButton.checked) {
             return container.networkField.text
         } else {
-            return container.fileText.text.replace("file:///", "")
+            return container.fileText.text.replace("file://", "")
         }
     }
 

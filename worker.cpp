@@ -1,6 +1,9 @@
 #include "worker.h"
 #include <QThread>
 #include <opencv2/opencv.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/videoio.hpp>
 #include <iostream>
 
 Worker::Worker(QObject *parent) : QObject(parent)
@@ -31,7 +34,21 @@ void Worker::run()
     cv::UMat rawMat;
     int noFrameCount = 0;
     int dropCounter = 0;
+
+    // Background Subtraction variables
+    cv::UMat bgModelFrame; //Background model currFrame
+    cv::UMat diffMat, grayMat, threshMat;
+
+    // Static object detection variables
+    cv::UMat curForeground, prevForeground, staticMask, coloredStaticMask;
+    bool isModelSet = false;
+
+    float alpha = 0.99;
+    float beta = 1 - alpha;
+    int updateInterval = 2;
+    int counter = 0;
     while (running && vc.isOpened() && noFrameCount < 5) {
+        counter += 1;
         // drop frame every x frames
         dropCounter += 1;
         if (dropCounter == 20) {
@@ -45,15 +62,43 @@ void Worker::run()
             continue;
         }
         noFrameCount = 0;
+        if (!isModelSet){
+            bgModelFrame = rawMat.clone();
+            cv::absdiff(rawMat, rawMat, prevForeground);
+            cv::cvtColor(prevForeground, prevForeground, CV_BGR2GRAY);
+            isModelSet = true;
+        }
+        /*****************************************
+        * Background Subtraction
+        *****************************************/
+        cv::absdiff(bgModelFrame, rawMat, diffMat); // Absolute differences between the 2 images
+        cv::cvtColor(diffMat, grayMat, CV_BGR2GRAY);
+        cv::threshold(grayMat,
+                threshMat,
+                threshold,
+                255,
+                CV_THRESH_BINARY); // set threshold to ignore small differences you can also use inrange function
+
+        /*****************************************
+        * Reduce Noise & Improve mask
+        *****************************************/
+        cv::medianBlur(threshMat, threshMat, 5);
+
+        /*****************************************
+        * Static Object Detection
+        *****************************************/
+        if (counter >= updateInterval) {
+            cv::addWeighted(prevForeground, alpha, threshMat, beta, 0.0, prevForeground);
+            cv::threshold(prevForeground, staticMask, 50, 255, CV_THRESH_TOZERO);
+            cv::applyColorMap(staticMask, coloredStaticMask, cv::COLORMAP_JET);
+
+            cv::cvtColor(coloredStaticMask, coloredStaticMask, cv::COLOR_BGR2RGB);
+            emit result("gray", coloredStaticMask.getMat(cv::ACCESS_READ));
+            counter = 0;
+        }
 
         cv::cvtColor(rawMat, rawMat, cv::COLOR_BGR2RGB);
         emit result("raw", rawMat.getMat(cv::ACCESS_READ));
-
-        cv::UMat grayMat;
-        cv::cvtColor(rawMat, grayMat, cv::COLOR_RGB2GRAY);
-        cv::threshold(grayMat, grayMat, threshold, 255, cv::THRESH_BINARY);
-        cv::cvtColor(grayMat, grayMat, cv::COLOR_GRAY2RGB);
-        emit result("gray", grayMat.getMat(cv::ACCESS_READ));
 
         emit preview();
     }
