@@ -1,0 +1,11 @@
+<RCC>
+    <qresource prefix="/">
+        <file>CamPreview.qml</file>
+        <file>color_bars.png</file>
+        <file>fontawesome-webfont.ttf</file>
+        <file>main.qml</file>
+        <file>qtquickcontrols2.conf</file>
+        <file>VideoSourceChooser.qml</file>
+        <file>VideoSourceChooserForm.ui.qml</file>
+    </qresource>
+</RCC>
